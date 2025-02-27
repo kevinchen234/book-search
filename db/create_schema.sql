@@ -23,7 +23,7 @@ Create table books (
 -- Create the authors table
 Create table authors (
     author_id serial primary key,
-    name varchar(255) not null
+    name varchar(255) not null unique
 );
 
 -- Create the books_authors table

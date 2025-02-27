@@ -1,24 +1,10 @@
 package com.h2;
 
-import java.io.BufferedReader;
-import java.io.IO;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
-import java.nio.Buffer;
-import java.sql.Connection;
+import java.net.*;
+import java.sql.*;
 import java.sql.Date;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.io.*;
 
 import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
@@ -26,13 +12,9 @@ import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import com.opencsv.exceptions.CsvValidationException;
 
-/**
- *
- * @author kevinchen
- */
 public class DbImporter {
 
-    private static final String CSV_URL = "https://gist.githubusercontent.com/hhimanshu/d55d17b51e0a46a37b739d0f3d3e3c74/raw/5b9027cf7b1641546c1948caffeaa44129b7db63/books.csv";
+    private static final String CSV_URL = "https://gist.github.com/hhimanshu/d55d17b51e0a46a37b739d0f3d3e3c74/raw/5b9027cf7b1641546c1948caffeaa44129b7db63/books.csv";
     private static final String DB_URL = "jdbc:postgresql://localhost:5432/library";
     private static final String DB_USER = "admin";
     private static final String DB_PASSWORD = "admin123";
@@ -50,12 +32,13 @@ public class DbImporter {
             List<String[]> records = parseCSV(csvStream);
 
             // Step 3: Insert Data into Database
-            System.out.println("Inserting data into the database...");
+            System.out.println("Inserting data into database...");
             insertData(records);
 
-            System.out.println("Data ingestion completed successfully!");
+            System.out.println("Data ingestion completed successfully.");
+
         } catch (Exception e) {
-            System.err.println("An error occurred during data ingestion: ");
+            System.err.println("An error occurred during data ingestion:");
             e.printStackTrace();
         }
     }
@@ -64,16 +47,22 @@ public class DbImporter {
     private static InputStream downloadCSV(String urlStr) throws IOException {
         URI uri = URI.create(urlStr);
         URL url = uri.toURL();
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        return connection.getInputStream();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        return conn.getInputStream();
     }
 
+    // Preprocess and parse the CSV file using OpenCSV
     private static List<String[]> parseCSV(InputStream csvStream) throws IOException, CsvValidationException {
         List<String[]> records = new ArrayList<>();
         BufferedReader reader = new BufferedReader(new InputStreamReader(csvStream));
 
-        CSVParser parser = new CSVParserBuilder().withSeparator(',').build();
-        CSVReader csvReader = new CSVReaderBuilder(reader).withCSVParser(parser).build(); // Don't skip the header
+        CSVParser parser = new CSVParserBuilder()
+                .withSeparator(',')
+                .build();
+
+        CSVReader csvReader = new CSVReaderBuilder(reader)
+                .withCSVParser(parser)
+                .build(); // Don't skip the header
 
         String[] nextLine;
         while ((nextLine = csvReader.readNext()) != null) {
@@ -84,24 +73,25 @@ public class DbImporter {
         return records;
     }
 
+    // Insert data into the database, including authors and book_authors tables
     private static void insertData(List<String[]> records) throws SQLException {
-        Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
+        Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
 
-        String insertAuthorSQL = "INSERT INTO authors (name) VALUES (?) ON CONFLICT (name) DO NOTHING RETURNING author_id";
+        String insertAuthorSQL = "INSERT INTO authors (name) VALUES (?) ON CONFLICT ON CONSTRAINT authors_name_key DO NOTHING RETURNING author_id";
         String selectAuthorSQL = "SELECT author_id FROM authors WHERE name = ?";
         String insertBookSQL = "INSERT INTO books (title, rating, description, language, isbn, book_format, edition, pages, publisher, publish_date, first_publish_date, liked_percent, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING book_id";
-        String insertBookAuthorSQL = "INSERT INTO book_authors (book_id, author_id) VALUES (?, ?)";
+        String insertBookAuthorSQL = "INSERT INTO books_authors (book_id, author_id) VALUES (?, ?)";
 
-        connection.setAutoCommit(false);
+        conn.setAutoCommit(false);
 
-        try (
-                PreparedStatement authorStmt = connection.prepareStatement(insertAuthorSQL); PreparedStatement selectAuthorStmt = connection.prepareStatement(selectAuthorSQL); PreparedStatement bookStmt = connection.prepareStatement(insertBookSQL); PreparedStatement bookAuthorStmt = connection.prepareStatement(insertBookAuthorSQL)) {
+        try (PreparedStatement authorStmt = conn.prepareStatement(insertAuthorSQL); PreparedStatement selectAuthorStmt = conn.prepareStatement(selectAuthorSQL); PreparedStatement bookStmt = conn.prepareStatement(insertBookSQL); PreparedStatement bookAuthorStmt = conn.prepareStatement(insertBookAuthorSQL)) {
 
             String[] header = records.get(0);
             Map<String, Integer> headerMap = new HashMap<>();
             for (int i = 0; i < header.length; i++) {
                 headerMap.put(header[i], i);
             }
+
             for (int i = 1; i < records.size(); i++) {
                 String[] record = records.get(i);
 
@@ -123,19 +113,21 @@ public class DbImporter {
                 // Insert into authors
                 int authorId;
                 authorStmt.setString(1, authorName);
-                ResultSet authorResult = authorStmt.executeQuery();
-                if (authorResult.next()) {
-                    authorId = authorResult.getInt("author_id");
+                ResultSet authorRS = authorStmt.executeQuery();
+                if (authorRS.next()) {
+                    authorId = authorRS.getInt("author_id");
                 } else {
-                    // Author already exists, get the author_id
+                    // Author already exists, retrieve ID
                     selectAuthorStmt.setString(1, authorName);
-                    ResultSet selectAuthorResult = selectAuthorStmt.executeQuery();
-                    if (selectAuthorResult.next()) {
-                        authorId = selectAuthorResult.getInt("author_id");
+                    ResultSet selectAuthorRS = selectAuthorStmt.executeQuery();
+                    if (selectAuthorRS.next()) {
+                        authorId = selectAuthorRS.getInt("author_id");
                     } else {
-                        throw new SQLException("Author not found: " + authorName);
+                        throw new SQLException("Failed to retrieve author_id for " + authorName);
                     }
+                    selectAuthorRS.close();
                 }
+                authorRS.close();
 
                 // Insert into books
                 int bookId;
@@ -155,40 +147,38 @@ public class DbImporter {
                 try {
                     publishDate = Date.valueOf(publishDateStr);
                 } catch (Exception e) {
-                    // Date parisng failed, set to null
+                    // Date parsing failed, set to null
                 }
-
                 try {
                     firstPublishDate = Date.valueOf(firstPublishDateStr);
                 } catch (Exception e) {
-                    // Date parisng failed, set to null
+                    // Date parsing failed, set to null
                 }
                 bookStmt.setDate(10, publishDate);
                 bookStmt.setDate(11, firstPublishDate);
 
                 bookStmt.setDouble(12, likedPercent);
                 bookStmt.setDouble(13, price);
-
-                ResultSet bookResult = bookStmt.executeQuery();
-                if (bookResult.next()) {
-                    bookId = bookResult.getInt("book_id");
+                ResultSet bookRS = bookStmt.executeQuery();
+                if (bookRS.next()) {
+                    bookId = bookRS.getInt("book_id");
                 } else {
-                    throw new SQLException("Failed to insert book: " + title);
+                    throw new SQLException("Failed to insert book " + title);
                 }
-                bookResult.close();
+                bookRS.close();
 
                 // Insert into book_authors
                 bookAuthorStmt.setInt(1, bookId);
                 bookAuthorStmt.setInt(2, authorId);
                 bookAuthorStmt.executeUpdate();
             }
-            connection.commit();
-        } catch (Exception e) {
-            connection.rollback();
+            conn.commit();
+        } catch (SQLException e) {
+            conn.rollback();
             throw e;
         } finally {
-            connection.setAutoCommit(true);
-            connection.close();
+            conn.setAutoCommit(true);
+            conn.close();
         }
     }
 }
