@@ -20,7 +20,7 @@ public class Book {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+  private Long bookId;
 
   private String title;
   private BigDecimal rating;
@@ -39,8 +39,8 @@ public class Book {
   @Column(name = "search_vector", columnDefinition = "tsvector")
   private String searchVector;
 
-  public Long getId() {
-    return id;
+  public Long getBookId() {
+    return bookId;
   }
 
   public String getTitle() {
@@ -102,7 +102,7 @@ public class Book {
   @Override
   public String toString() {
     return "Book{" +
-        "id=" + id +
+        "id=" + bookId +
         ", title='" + title + '\'' +
         ", rating=" + rating +
         ", description='" + description + '\'' +
